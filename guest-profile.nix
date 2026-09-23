@@ -1,7 +1,8 @@
-{ lib
-, config
-, pkgs
-, ...
+{
+  config,
+  lib,
+  pkgs,
+  ...
 }:
 let
   cfg = config.garnix.server;
@@ -59,213 +60,215 @@ let
   '';
 in
 {
-  options.garnix.guest = {
-    sshPublicKey = lib.mkOption {
-      type = lib.types.str;
-      default = "";
-      description = ''
-        Hosting SSH public key allowed for root and the garnix user.
+  options = {
+    garnix = {
+      guest = {
+        sshPublicKey = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = ''
+            Hosting SSH public key allowed for root and the garnix user.
 
-        Leave this empty. The key belongs to the garnix instance doing the
-        hosting, not to the repository being deployed: the provisioner sets
-        it on the base guest it creates, and first boot copies it to
-        /var/lib/garnix/hosting_authorized_keys — a path on the guest's own
-        disk that sshd reads for root and for the garnix user, and that
-        survives activating a configuration which never mentions the key.
+            Leave this empty. The key belongs to the garnix instance doing the
+            hosting, not to the repository being deployed: the provisioner sets
+            it on the base guest it creates, and first boot copies it to
+            /var/lib/garnix/hosting_authorized_keys — a path on the guest's own
+            disk that sshd reads for root and for the garnix user, and that
+            survives activating a configuration which never mentions the key.
 
-        Pinning one instance's key into a repository would also get it
-        wrong: a key whose private half you do not hold would be authorized
-        as root on every guest you deploy, while the backend that has to
-        deploy them could not log in at all.
-      '';
-    };
-    terminalCaPublicKey = lib.mkOption {
-      type = lib.types.str;
-      default = config.garnix.guest.sshPublicKey;
-      description = ''
-        Public key of the dedicated web-terminal certificate authority,
-        trusted as TrustedUserCAKeys so the backend can mint short-lived
-        per-session login certs WITHOUT the guest trusting the hosting/deploy
-        key as a CA. Defaults to sshPublicKey so guests that don't set it
-        (or were deployed before this option existed) keep trusting the
-        hosting key as CA. The provisioner injects the real terminal-CA pubkey.
-      '';
-    };
-  };
-
-  options.garnix.server = {
-    domains = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = "Extra hostnames (full FQDNs) this server should also answer on.";
-    };
-
-    exposeSSH = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Open a public DNAT port on the garnix host forwarding to the guest's SSH (:22).";
-    };
-
-    authorizeDeployerGithubKeys = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Authorize the deployer's github.com/<user>.keys to log in as the garnix user on the deployed server.";
-    };
-
-    authorizedSSHKeys = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = "Extra SSH public keys to authorize for login as the garnix user on the deployed server.";
-    };
-
-    ports = lib.mkOption {
-      type = lib.types.listOf (
-        lib.types.submodule {
-          options = {
-            name = lib.mkOption {
-              type = lib.types.str;
-              description = "A short name; used as the subdomain (http) or label (tcp).";
-            };
-            port = lib.mkOption {
-              type = lib.types.port;
-              description = "The port the service listens on inside the server.";
-            };
-            type = lib.mkOption {
-              type = lib.types.enum [
-                "http"
-                "tcp"
-              ];
-              default = "http";
-              description = ''"http" (default) exposes <name>.<server-domain>; "tcp" exposes a raw host:port.'';
-            };
-          };
-        }
-      );
-      default = [ ];
-      description = "Extra ports to expose, beyond the standard :80.";
-    };
-
-    applicationLog = lib.mkOption {
-      type = lib.types.nullOr (
-        lib.types.submodule {
-          options = {
-            enable = lib.mkOption {
-              type = lib.types.bool;
-              default = false;
-              description = "Stream the configured application log in the Servers-page Logs modal.";
-            };
-            path = lib.mkOption {
-              type = lib.types.str;
-              default = "/var/log/nginx/hello-access.log";
-              description = "Absolute guest path to follow when application logging is enabled.";
-            };
-          };
-        }
-      );
-      default = null;
-      description = "Optional application-log stream. `null` (the default) means no log follows this server.";
-    };
-
-    backups = lib.mkOption {
-      type = lib.types.nullOr (
-        lib.types.submodule {
-          options = {
-            paths = lib.mkOption {
-              type = lib.types.listOf lib.types.str;
-              default = [ ];
-              description = ''
-                Absolute paths inside the server to back up. Must be
-                non-empty when `backups` is set, and none may be "/" or
-                under /nix/store.
-              '';
-            };
-            schedule = lib.mkOption {
-              type = lib.types.str;
-              default = "daily";
-              description = ''How often to back up: "hourly" | "daily" (default) | "weekly" | "<N>h" (N >= 1).'';
-            };
-            preBackupCommand = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              description = "Command run on the server (as root, via sh -c) before the backup tar is taken. A non-zero exit aborts the backup.";
-            };
-            postBackupCommand = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              description = "Command run on the server after the tar is taken (cleanup). Always attempted, even if the tar failed.";
-            };
-            preRestoreCommand = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              description = "Command run on the server before a restore untars (e.g. stop your service).";
-            };
-            postRestoreCommand = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              description = "Command run on the server after a restore untars (e.g. start your service). Always attempted, even if the untar failed.";
-            };
-          };
-        }
-      );
-      default = null;
-      description = "Scheduled backups of paths on this server. `null` (the default) means no backups.";
-    };
-
-    deploySpec = lib.mkOption {
-      type = lib.types.raw;
-      readOnly = true;
-      default =
-        let
-          persistenceEnabled = cfg.persistence.enable or false;
-          authentikDefault =
-            (lib.attrByPath [ "garnix" "authentik" "enable" ] false config)
-            && (lib.attrByPath [ "garnix" "authentik" "mode" ] "dedicated" config) == "default";
-        in
-        {
-          inherit (cfg)
-            domains
-            exposeSSH
-            authorizeDeployerGithubKeys
-            authorizedSSHKeys
-            ;
-          inherit authentikDefault;
-          ports = map (p: { inherit (p) name port type; }) cfg.ports;
-          applicationLog =
-            if cfg.applicationLog == null then null else { inherit (cfg.applicationLog) enable path; };
-          backups =
-            if cfg.backups == null then
-              null
-            else
-              {
-                inherit (cfg.backups)
-                  paths
-                  schedule
-                  preBackupCommand
-                  postBackupCommand
-                  preRestoreCommand
-                  postRestoreCommand
-                  ;
-              };
-          persistence = {
-            enable = persistenceEnabled;
-            name = if persistenceEnabled then cfg.persistence.name else null;
-          };
+            Pinning one instance's key into a repository would also get it
+            wrong: a key whose private half you do not hold would be authorized
+            as root on every guest you deploy, while the backend that has to
+            deploy them could not log in at all.
+          '';
         };
-      description = ''
-        Read-only, JSON-serializable aggregate of every `garnix.server.*`
-        option above (plus `garnix.server.persistence`, when garnix-lib's
-        module is also imported). Rendered verbatim to
-        `/etc/garnix/server.json` in the guest below, and `nix eval`ed by the
-        backend once a configuration's build has succeeded.
+        terminalCaPublicKey = lib.mkOption {
+          type = lib.types.str;
+          default = config.garnix.guest.sshPublicKey;
+          description = ''
+            Public key of the dedicated web-terminal certificate authority,
+            trusted as TrustedUserCAKeys so the backend can mint short-lived
+            per-session login certs WITHOUT the guest trusting the hosting/deploy
+            key as a CA. Defaults to sshPublicKey so guests that don't set it
+            (or were deployed before this option existed) keep trusting the
+            hosting key as CA. The provisioner injects the real terminal-CA pubkey.
+          '';
+        };
+      };
+      server = {
+        domains = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Extra hostnames (full FQDNs) this server should also answer on.";
+        };
 
-        These are the knobs for a server that is already being deployed.
-        WHETHER a configuration is deployed at all, and from which branch, is
-        declared in `garnix.yaml` under `servers:` — deliberately not here, so
-        that reading the yaml tells you what a push does.
-      '';
+        exposeSSH = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Open a public DNAT port on the garnix host forwarding to the guest's SSH (:22).";
+        };
+
+        authorizeDeployerGithubKeys = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Authorize the deployer's github.com/<user>.keys to log in as the garnix user on the deployed server.";
+        };
+
+        authorizedSSHKeys = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Extra SSH public keys to authorize for login as the garnix user on the deployed server.";
+        };
+
+        ports = lib.mkOption {
+          type = lib.types.listOf (
+            lib.types.submodule {
+              options = {
+                name = lib.mkOption {
+                  type = lib.types.str;
+                  description = "A short name; used as the subdomain (http) or label (tcp).";
+                };
+                port = lib.mkOption {
+                  type = lib.types.port;
+                  description = "The port the service listens on inside the server.";
+                };
+                type = lib.mkOption {
+                  type = lib.types.enum [
+                    "http"
+                    "tcp"
+                  ];
+                  default = "http";
+                  description = ''"http" (default) exposes <name>.<server-domain>; "tcp" exposes a raw host:port.'';
+                };
+              };
+            }
+          );
+          default = [ ];
+          description = "Extra ports to expose, beyond the standard :80.";
+        };
+
+        applicationLog = lib.mkOption {
+          type = lib.types.nullOr (
+            lib.types.submodule {
+              options = {
+                enable = lib.mkOption {
+                  type = lib.types.bool;
+                  default = false;
+                  description = "Stream the configured application log in the Servers-page Logs modal.";
+                };
+                path = lib.mkOption {
+                  type = lib.types.str;
+                  default = "/var/log/nginx/hello-access.log";
+                  description = "Absolute guest path to follow when application logging is enabled.";
+                };
+              };
+            }
+          );
+          default = null;
+          description = "Optional application-log stream. `null` (the default) means no log follows this server.";
+        };
+
+        backups = lib.mkOption {
+          type = lib.types.nullOr (
+            lib.types.submodule {
+              options = {
+                paths = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [ ];
+                  description = ''
+                    Absolute paths inside the server to back up. Must be
+                    non-empty when `backups` is set, and none may be "/" or
+                    under /nix/store.
+                  '';
+                };
+                schedule = lib.mkOption {
+                  type = lib.types.str;
+                  default = "daily";
+                  description = ''How often to back up: "hourly" | "daily" (default) | "weekly" | "<N>h" (N >= 1).'';
+                };
+                preBackupCommand = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Command run on the server (as root, via sh -c) before the backup tar is taken. A non-zero exit aborts the backup.";
+                };
+                postBackupCommand = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Command run on the server after the tar is taken (cleanup). Always attempted, even if the tar failed.";
+                };
+                preRestoreCommand = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Command run on the server before a restore untars (e.g. stop your service).";
+                };
+                postRestoreCommand = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Command run on the server after a restore untars (e.g. start your service). Always attempted, even if the untar failed.";
+                };
+              };
+            }
+          );
+          default = null;
+          description = "Scheduled backups of paths on this server. `null` (the default) means no backups.";
+        };
+
+        deploySpec = lib.mkOption {
+          type = lib.types.raw;
+          readOnly = true;
+          default =
+            let
+              persistenceEnabled = cfg.persistence.enable or false;
+              authentikDefault =
+                (lib.attrByPath [ "garnix" "authentik" "enable" ] false config)
+                && (lib.attrByPath [ "garnix" "authentik" "mode" ] "dedicated" config) == "default";
+            in
+            {
+              inherit (cfg)
+                authorizeDeployerGithubKeys
+                authorizedSSHKeys
+                domains
+                exposeSSH
+                ;
+              inherit authentikDefault;
+              ports = map (p: { inherit (p) name port type; }) cfg.ports;
+              applicationLog =
+                if cfg.applicationLog == null then null else { inherit (cfg.applicationLog) enable path; };
+              backups =
+                if cfg.backups == null then
+                  null
+                else
+                  {
+                    inherit (cfg.backups)
+                      paths
+                      postBackupCommand
+                      postRestoreCommand
+                      preBackupCommand
+                      preRestoreCommand
+                      schedule
+                      ;
+                  };
+              persistence = {
+                enable = persistenceEnabled;
+                name = if persistenceEnabled then cfg.persistence.name else null;
+              };
+            };
+          description = ''
+            Read-only, JSON-serializable aggregate of every `garnix.server.*`
+            option above (plus `garnix.server.persistence`, when garnix-lib's
+            module is also imported). Rendered verbatim to
+            `/etc/garnix/server.json` in the guest below, and `nix eval`ed by the
+            backend once a configuration's build has succeeded.
+
+            These are the knobs for a server that is already being deployed.
+            WHETHER a configuration is deployed at all, and from which branch, is
+            declared in `garnix.yaml` under `servers:` — deliberately not here, so
+            that reading the yaml tells you what a push does.
+          '';
+        };
+      };
     };
   };
-
   config = lib.mkMerge [
     {
       assertions =
@@ -301,9 +304,17 @@ in
             message = "garnix.server.domains entries must be non-empty strings.";
           }
         ];
-
-      environment.etc."garnix/server.json".text = builtins.toJSON cfg.deploySpec;
-
+      environment = {
+        etc = {
+          "garnix/server.json".text = builtins.toJSON cfg.deploySpec;
+          "ssh/garnix-hosting-ca.pub" = lib.mkIf (config.garnix.guest.terminalCaPublicKey != "") {
+            text = config.garnix.guest.terminalCaPublicKey + "\n";
+          };
+          "ssh/garnix-hosting.pub" = lib.mkIf (config.garnix.guest.sshPublicKey != "") {
+            text = config.garnix.guest.sshPublicKey + "\n";
+          };
+        };
+      };
       microvm = {
         hypervisor = "qemu";
         volumes = [
@@ -336,7 +347,16 @@ in
           "size=4m"
         ];
       };
-      networking.useNetworkd = true;
+      networking = {
+        useNetworkd = true;
+        firewall = {
+          enable = lib.mkDefault true;
+          allowedTCPPorts = [
+            22
+            80
+          ];
+        };
+      };
       systemd = {
         network.networks."10-eth" = {
           matchConfig.Type = "ether";
@@ -383,12 +403,6 @@ in
         "net.ipv6.conf.all.accept_ra" = 0;
         "net.ipv6.conf.default.accept_ra" = 0;
       };
-      environment.etc."ssh/garnix-hosting-ca.pub" =
-        lib.mkIf (config.garnix.guest.terminalCaPublicKey != "")
-          { text = config.garnix.guest.terminalCaPublicKey + "\n"; };
-      environment.etc."ssh/garnix-hosting.pub" = lib.mkIf (config.garnix.guest.sshPublicKey != "") {
-        text = config.garnix.guest.sshPublicKey + "\n";
-      };
       services.openssh = {
         enable = true;
         settings = {
@@ -406,32 +420,25 @@ in
           Match all
         '';
       };
-      users.users.root.openssh.authorizedKeys.keys = lib.optional
-        (
-          config.garnix.guest.sshPublicKey != ""
-        )
-        config.garnix.guest.sshPublicKey;
-      users.users.garnix = {
-        isNormalUser = true;
-        extraGroups = [ "wheel" ];
-        openssh.authorizedKeys.keys = lib.optional
-          (
+      users = {
+        users = {
+          root.openssh.authorizedKeys.keys = lib.optional (
             config.garnix.guest.sshPublicKey != ""
-          )
-          config.garnix.guest.sshPublicKey;
+          ) config.garnix.guest.sshPublicKey;
+          garnix = {
+            isNormalUser = true;
+            extraGroups = [ "wheel" ];
+            openssh.authorizedKeys.keys = lib.optional (
+              config.garnix.guest.sshPublicKey != ""
+            ) config.garnix.guest.sshPublicKey;
+          };
+        };
       };
       security.sudo.wheelNeedsPassword = false;
       nix.settings.experimental-features = [
         "nix-command"
         "flakes"
       ];
-      networking.firewall = {
-        enable = lib.mkDefault true;
-        allowedTCPPorts = [
-          22
-          80
-        ];
-      };
       system.stateVersion = "25.11";
     }
     (lib.mkIf config.services.nginx.enable {
